@@ -3,6 +3,7 @@
 #include <sourcemod>
 #include <sdktools>
 #include <cstrike>
+#include <clientprefs>
 
 #pragma newdecls required
 
@@ -13,6 +14,8 @@ EngineVersion g_Game;
 float gF_LastAngle[MAXPLAYERS + 1][3];
 int gI_ClientTickCount[MAXPLAYERS + 1];
 float gF_ClientPercentages[MAXPLAYERS + 1][TRAINER_TICK_INTERVAL];
+
+Handle gH_StrafeTrainerCookie;
 bool gB_StrafeTrainer[MAXPLAYERS + 1] = {false, ...};
 
 public Plugin myinfo = 
@@ -33,6 +36,27 @@ public void OnPluginStart()
 	}
 	
 	RegConsoleCmd("sm_strafetrainer", Command_StrafeTrainer, "Toggles the Strafe trainer.");
+	
+	gH_StrafeTrainerCookie = RegClientCookie("strafetrainer_enabled", "strafetrainer_enabled", CookieAccess_Protected);
+	
+	// Late loading
+	for(int i = 1; i <= MaxClients; i++)
+	{
+		if(AreClientCookiesCached(i))
+		{
+			OnClientCookiesCached(i);
+		}
+	}
+}
+
+public void OnClientDisconnect(int client)
+{
+	gB_StrafeTrainer[client] = false;
+}
+
+public void OnClientCookiesCached(int client)
+{
+	gB_StrafeTrainer[client] = GetClientCookieBool(client, gH_StrafeTrainerCookie);
 }
 
 public Action Command_StrafeTrainer(int client, int args)
@@ -40,11 +64,14 @@ public Action Command_StrafeTrainer(int client, int args)
 	if (client != 0)
 	{
 		gB_StrafeTrainer[client] = !gB_StrafeTrainer[client];
+		SetClientCookieBool(client, gH_StrafeTrainerCookie, gB_StrafeTrainer[client]);
 		ReplyToCommand(client, "[SM] Strafe Trainer %s!", gB_StrafeTrainer[client] ? "enabled" : "disabled");
 	}
 	else
+	{
 		ReplyToCommand(client, "[SM] Invalid client!");
-		
+	}
+	
 	return Plugin_Handled;
 }
 
@@ -99,40 +126,42 @@ void GetPercentageColor(float percentage, int &r, int &g, int &b)
 	float offset = FloatAbs(1 - percentage);
 	
 	if (offset < 0.05)
-		{
-			r = 0;
-			g = 255;
-			b = 0;
-		}
-		else if (0.05 <= offset < 0.1)
-		{
-			r = 128;
-			g = 255;
-			b = 0;
-		}
-		else if (0.1 <= offset < 0.25)
-		{
-			r = 255;
-			g = 255;
-			b = 0;
-		}
-		else if (0.25 <= offset < 0.5)
-		{
-			r = 255;
-			g = 128;
-			b = 0;
-		}
-		else
-		{
-			r = 255;
-			g = 0;
-			b = 0;
-		}
+	{
+		r = 0;
+		g = 255;
+		b = 0;
+	}
+	else if (0.05 <= offset < 0.1)
+	{
+		r = 128;
+		g = 255;
+		b = 0;
+	}
+	else if (0.1 <= offset < 0.25)
+	{
+		r = 255;
+		g = 255;
+		b = 0;
+	}
+	else if (0.25 <= offset < 0.5)
+	{
+		r = 255;
+		g = 128;
+		b = 0;
+	}
+	else
+	{
+		r = 255;
+		g = 0;
+		b = 0;
+	}
 }
 
 public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if ((GetEntityFlags(client) & FL_ONGROUND) || (GetEntityMoveType(client) == MOVETYPE_NOCLIP) || (GetEntityMoveType(client) == MOVETYPE_LADDER) || !gB_StrafeTrainer[client])
+	if (!gB_StrafeTrainer[client])
+		return Plugin_Continue; // dont run when disabled
+	if ((GetEntityFlags(client) & FL_ONGROUND) || (GetEntityMoveType(client) == MOVETYPE_NOCLIP) || (GetEntityMoveType(client) == MOVETYPE_LADDER))
 		return Plugin_Continue; // dont run when disabled
 	
 	// calculate differences
@@ -197,4 +226,20 @@ public Action OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	gF_LastAngle[client] = angles;
 	
 	return Plugin_Continue;
+}
+
+stock bool GetClientCookieBool(int client, Handle cookie)
+{
+	char sValue[8];
+	GetClientCookie(client, gH_StrafeTrainerCookie, sValue, sizeof(sValue));
+	
+	return (sValue[0] != '\0' && StringToInt(sValue));
+}
+
+stock void SetClientCookieBool(int client, Handle cookie, bool value)
+{
+	char sValue[8];
+	IntToString(value, sValue, sizeof(sValue));
+	
+	SetClientCookie(client, cookie, sValue);
 }
